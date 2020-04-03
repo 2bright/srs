@@ -34,6 +34,7 @@ using namespace std;
 #include <srs_app_config.hpp>
 #include <srs_kernel_utility.hpp>
 #include <srs_protocol_amf0.hpp>
+#include <srs_service_http_conn.hpp>
 
 int64_t srs_gvid = 0;
 
@@ -55,6 +56,7 @@ SrsStatisticVhost::SrsStatisticVhost()
     
     nb_clients = 0;
     nb_streams = 0;
+    nb_hls_clients = 0;
 }
 
 SrsStatisticVhost::~SrsStatisticVhost()
@@ -75,6 +77,7 @@ srs_error_t SrsStatisticVhost::dumps(SrsJsonObject* obj)
     obj->set("name", SrsJsonAny::str(vhost.c_str()));
     obj->set("enabled", SrsJsonAny::boolean(enabled));
     obj->set("clients", SrsJsonAny::integer(nb_clients));
+    obj->set("hls_clients", SrsJsonAny::integer(nb_hls_clients));
     obj->set("streams", SrsJsonAny::integer(nb_streams));
     obj->set("send_bytes", SrsJsonAny::integer(kbps->get_send_bytes()));
     obj->set("recv_bytes", SrsJsonAny::integer(kbps->get_recv_bytes()));
@@ -122,6 +125,7 @@ SrsStatisticStream::SrsStatisticStream()
     
     nb_clients = 0;
     nb_frames = 0;
+    nb_hls_clients = 0;
 }
 
 SrsStatisticStream::~SrsStatisticStream()
@@ -140,6 +144,7 @@ srs_error_t SrsStatisticStream::dumps(SrsJsonObject* obj)
     obj->set("app", SrsJsonAny::str(app.c_str()));
     obj->set("live_ms", SrsJsonAny::integer(srsu2ms(srs_get_system_time())));
     obj->set("clients", SrsJsonAny::integer(nb_clients));
+    obj->set("hls_clients", SrsJsonAny::integer(nb_hls_clients));
     obj->set("frames", SrsJsonAny::integer(nb_frames));
     obj->set("send_bytes", SrsJsonAny::integer(kbps->get_send_bytes()));
     obj->set("recv_bytes", SrsJsonAny::integer(kbps->get_recv_bytes()));
@@ -231,6 +236,33 @@ srs_error_t SrsStatisticClient::dumps(SrsJsonObject* obj)
     obj->set("publish", SrsJsonAny::boolean(srs_client_type_is_publish(type)));
     obj->set("alive", SrsJsonAny::number(srsu2ms(srs_get_system_time() - create) / 1000.0));
     
+    return err;
+}
+
+SrsStatisticHlsClient::SrsStatisticHlsClient()
+{
+    stream = NULL;
+    create = srs_get_system_time();
+    update = create;
+}
+
+SrsStatisticHlsClient::~SrsStatisticHlsClient()
+{
+}
+
+srs_error_t SrsStatisticHlsClient::dumps(SrsJsonObject* obj)
+{
+    srs_error_t err = srs_success;
+
+    obj->set("id", SrsJsonAny::str(id.c_str()));
+    obj->set("vhost", SrsJsonAny::integer(stream->vhost->id));
+    obj->set("stream", SrsJsonAny::integer(stream->id));
+    obj->set("ip", SrsJsonAny::str(ip.c_str()));
+    obj->set("url", SrsJsonAny::str(stream_url.c_str()));
+    obj->set("alive", SrsJsonAny::number(srsu2ms(srs_get_system_time() - create) / 1000.0));
+
+    obj->set("update", SrsJsonAny::number(srsu2ms(update) / 1000.0));
+
     return err;
 }
 
@@ -431,6 +463,82 @@ srs_error_t SrsStatistic::on_client(int id, SrsRequest* req, SrsConnection* conn
     return err;
 }
 
+srs_error_t SrsStatistic::on_hls_client(SrsRequest* req, SrsHttpMessage* hreq)
+{
+    srs_error_t err = srs_success;
+
+    std::string filext = hreq->ext();
+    std::string stream_url;
+
+    if (filext == ".ts" || filext == ".m3u8") {
+        // is hls
+        stream_url = "/" + req->app + "/" + srs_path_stream(hreq->path());
+    } else {
+        return err;
+    }
+
+    std::map<std::string, SrsStatisticStream*>::iterator it_stream = rstreams.find(stream_url);
+    if (it_stream == rstreams.end()) {
+        // no publish stream
+        return err;
+    }
+
+    SrsStatisticStream* stream = it_stream->second;
+
+    std::string id = req->ip + ":" + stream_url;
+    SrsStatisticHlsClient* hls_client = NULL;
+    std::map<std::string, SrsStatisticHlsClient*>::iterator it = hls_clients.find(id);
+
+    if (it == hls_clients.end()) {
+        hls_client = new SrsStatisticHlsClient();
+        hls_client->id = id;
+        hls_client->stream = stream;
+        hls_client->ip = req->ip;
+        hls_client->stream_url = stream_url;
+        hls_clients[id] = hls_client;
+
+        stream->nb_hls_clients++;
+        stream->vhost->nb_hls_clients++;
+    } else {
+        it->second->update = srs_get_system_time();
+    }
+
+    return err;
+}
+
+void SrsStatistic::on_hls_client_inactive(std::string id)
+{
+    std::map<std::string, SrsStatisticHlsClient*>::iterator it;
+    if ((it = hls_clients.find(id)) == hls_clients.end()) {
+        return;
+    }
+    on_hls_client_inactive(it);
+}
+
+void SrsStatistic::on_hls_client_inactive(std::map<std::string, SrsStatisticHlsClient*>::iterator it)
+{
+    SrsStatisticHlsClient* hls_client = it->second;
+    SrsStatisticStream* stream = hls_client->stream;
+    SrsStatisticVhost* vhost = stream->vhost;
+
+    srs_trace("cleanup hls client: %s", it->first.c_str());
+
+    srs_freep(hls_client);
+    hls_clients.erase(it);
+
+    stream->nb_hls_clients--;
+    vhost->nb_hls_clients--;
+}
+
+void SrsStatistic::cleanup_hls_clients()
+{
+    for (std::map<std::string, SrsStatisticHlsClient*>::iterator it = hls_clients.begin(); it != hls_clients.end(); ++it) {
+        if (srsu2ms(srs_get_system_time() - it->second->update) / 1000.0 > 60) {
+            on_hls_client_inactive(it);
+        }
+    }
+}
+
 void SrsStatistic::on_disconnect(int id)
 {
     std::map<int, SrsStatisticClient*>::iterator it;
@@ -553,6 +661,29 @@ srs_error_t SrsStatistic::dumps_clients(SrsJsonArray* arr, int start, int count)
         }
     }
     
+    return err;
+}
+
+srs_error_t SrsStatistic::dumps_hls_clients(SrsJsonArray* arr, int start, int count)
+{
+    srs_error_t err = srs_success;
+
+    std::map<std::string, SrsStatisticHlsClient*>::iterator it = hls_clients.begin();
+    for (int i = 0; i < start + count && it != hls_clients.end(); it++, i++) {
+        if (i < start) {
+            continue;
+        }
+
+        SrsStatisticHlsClient* hls_client = it->second;
+
+        SrsJsonObject* obj = SrsJsonAny::object();
+        arr->append(obj);
+
+        if ((err = hls_client->dumps(obj)) != srs_success) {
+            return srs_error_wrap(err, "dump hls client");
+        }
+    }
+
     return err;
 }
 

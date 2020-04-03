@@ -58,6 +58,7 @@ using namespace std;
 #include <srs_protocol_amf0.hpp>
 #include <srs_app_utility.hpp>
 #include <srs_app_st.hpp>
+#include <srs_app_statistic.hpp>
 
 SrsHttpConn::SrsHttpConn(IConnectionManager* cm, srs_netfd_t fd, ISrsHttpServeMux* m, string cip) : SrsConnection(cm, fd, cip)
 {
@@ -132,6 +133,11 @@ srs_error_t SrsHttpConn::do_cycle()
         SrsHttpResponseWriter writer(skt);
         if ((err = process_request(&writer, req)) != srs_success) {
             break;
+        }
+
+        SrsStatistic* stat = SrsStatistic::instance();
+        if ((err = stat->on_hls_client(last_req, hreq)) != srs_success) {
+            return srs_error_wrap(err, "stat on hls client");
         }
         
         // donot keep alive, disconnect it.

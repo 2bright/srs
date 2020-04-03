@@ -823,6 +823,20 @@ srs_error_t SrsGoApiClients::serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessa
                 srs_error_reset(err);
                 return srs_api_response_code(w, r, code);
             }
+
+            // add hls_clients
+            data = SrsJsonAny::array();
+            obj->set("hls_clients", data);
+
+            rstart = r->query_get("start");
+            rcount = r->query_get("count");
+            start = srs_max(0, atoi(rstart.c_str()));
+            count = srs_max(10, atoi(rcount.c_str()));
+            if ((err = stat->dumps_hls_clients(data, start, count)) != srs_success) {
+                int code = srs_error_code(err);
+                srs_error_reset(err);
+                return srs_api_response_code(w, r, code);
+            }
         } else {
             SrsJsonObject* data = SrsJsonAny::object();
             obj->set("client", data);;

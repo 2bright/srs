@@ -307,6 +307,8 @@ private:
     virtual void close_listeners(SrsListenerType type);
     // Resample the server kbs.
     virtual void resample_kbps();
+    // cleanup hls clients
+    virtual void cleanup_hls_clients();
 // For internal only
 public:
     // When listener got a fd, notice server to accept it.

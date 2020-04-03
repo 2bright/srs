@@ -121,6 +121,8 @@ extern std::string srs_path_dirname(std::string path);
 extern std::string srs_path_basename(std::string path);
 // Get the filename of path, for instance, filename("livestream.flv")="livestream"
 extern std::string srs_path_filename(std::string path);
+// Get the stream name from path, for instance, srs_path_stream("/live/livestream-01.ts")="livestream", srs_path_stream("/live/livestream.m3u8")="livestream"
+extern std::string srs_path_stream(std::string path);
 // Get the file extension of path, for instance, filext("live.flv")=".flv"
 extern std::string srs_path_filext(std::string path);
 

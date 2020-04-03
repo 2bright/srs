@@ -94,6 +94,10 @@ using namespace std;
 //      SRS_SYS_CYCLE_INTERVAL * SRS_SYS_NETWORK_DEVICE_RESOLUTION_TIMES
 #define SRS_SYS_NETWORK_DEVICE_RESOLUTION_TIMES 9
 
+// cleanup hls clients interval:
+//      SRS_SYS_CYCLE_INTERVAL * SRS_SYS_CLEANUP_HLS_CLIENT_TIMES
+#define SRS_SYS_CLEANUP_HLS_CLIENT_TIMES 9
+
 std::string srs_listener_type2string(SrsListenerType type)
 {
     switch (type) {
@@ -1218,6 +1222,10 @@ srs_error_t SrsServer::do_cycle()
                 srs_info("update network server kbps info.");
                 resample_kbps();
             }
+            if ((i % SRS_SYS_CLEANUP_HLS_CLIENT_TIMES) == 0) {
+                srs_info("cleanup hls clients.");
+                cleanup_hls_clients();
+            }
             if (_srs_config->get_heartbeat_enabled()) {
                 if ((i % heartbeat_max_resolution) == 0) {
                     srs_info("do http heartbeat, for internal server to report.");
@@ -1383,6 +1391,11 @@ void SrsServer::resample_kbps()
     SrsKbps* kbps = stat->kbps_sample();
     
     srs_update_rtmp_server((int)conns.size(), kbps);
+}
+
+void SrsServer::cleanup_hls_clients()
+{
+    SrsStatistic::instance()->cleanup_hls_clients();
 }
 
 srs_error_t SrsServer::accept_client(SrsListenerType type, srs_netfd_t stfd)

@@ -708,6 +708,32 @@ string srs_path_filext(string path)
     return "";
 }
 
+std::string srs_path_stream(std::string path)
+{
+    size_t pos = std::string::npos;
+
+    if ((pos = path.rfind("/")) != std::string::npos) {
+        if (path.length() > 1) {
+            path = path.substr(pos + 1);
+        }
+    }
+
+    if ((pos = path.rfind(".")) != std::string::npos) {
+        if (path.substr(pos) == ".ts") {
+            size_t pos2 = std::string::npos;
+            if ((pos2 = path.rfind("-")) != std::string::npos) {
+                return path.substr(0, pos2);
+            } else {
+                return path.substr(0, pos);
+            }
+        } else {
+            return path.substr(0, pos);
+        }
+    }
+
+    return path;
+}
+
 bool srs_avc_startswith_annexb(SrsBuffer* stream, int* pnb_start_code)
 {
     if (!stream) {
