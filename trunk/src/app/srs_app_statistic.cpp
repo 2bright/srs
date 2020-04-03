@@ -303,6 +303,13 @@ SrsStatistic::~SrsStatistic()
             srs_freep(client);
         }
     }
+    if (true) {
+        std::map<std::string, SrsStatisticHlsClient*>::iterator it;
+        for (it = hls_clients.begin(); it != hls_clients.end(); it++) {
+            SrsStatisticHlsClient* hls_client = it->second;
+            srs_freep(hls_client);
+        }
+    }
     
     vhosts.clear();
     rvhosts.clear();
