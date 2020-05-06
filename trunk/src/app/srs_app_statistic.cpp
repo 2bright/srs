@@ -315,6 +315,8 @@ SrsStatistic::~SrsStatistic()
     rvhosts.clear();
     streams.clear();
     rstreams.clear();
+    clients.clear();
+    hls_clients.clear();
 }
 
 SrsStatistic* SrsStatistic::instance()
@@ -539,9 +541,11 @@ void SrsStatistic::on_hls_client_inactive(std::map<std::string, SrsStatisticHlsC
 
 void SrsStatistic::cleanup_hls_clients()
 {
-    for (std::map<std::string, SrsStatisticHlsClient*>::iterator it = hls_clients.begin(); it != hls_clients.end(); ++it) {
+    for (std::map<std::string, SrsStatisticHlsClient*>::iterator it = hls_clients.begin(); it != hls_clients.end();) {
         if (srsu2ms(srs_get_system_time() - it->second->update) / 1000.0 > 60) {
-            on_hls_client_inactive(it);
+            on_hls_client_inactive(it++);
+        } else {
+            it++;
         }
     }
 }
